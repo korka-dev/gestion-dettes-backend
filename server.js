@@ -1,10 +1,9 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { createServer as createViteServer } from 'vite';
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+const { createServer: createViteServer } = require('vite');
 
 dotenv.config();
 
@@ -34,14 +33,6 @@ const clientSchema = new mongoose.Schema({
   }]
 });
 
-/*Calculate total debt
-clientSchema.virtual('totalDebt').get(function() {
-  return this.debts.reduce((total, debt) => {
-    return debt.paid ? total : total + debt.amount;
-  }, 0);
-});
-*/
-
 const Client = mongoose.model('Client', clientSchema);
 
 // API Routes
@@ -56,15 +47,20 @@ app.get('/api/clients', async (req, res) => {
 
 app.post('/api/clients', async (req, res) => {
   try {
+    const initialDebt = Number(req.body.initialDebt) || 0;
+    
     const client = new Client({
       name: req.body.name,
       phone: req.body.phone,
-      deposit: req.body.deposit,
-      debts: req.body.initialDebt ? [{
-        amount: req.body.initialDebt,
+      deposit: req.body.deposit || 0,
+      totalDebt: initialDebt,
+      debts: initialDebt ? [{
+        amount: initialDebt,
+        productName: req.body.initialProductName || 'Produit initial',
         date: new Date()
       }] : []
     });
+    
     const newClient = await client.save();
     res.status(201).json(newClient);
   } catch (error) {
@@ -99,7 +95,6 @@ app.post('/api/clients/:clientId/debts', async (req, res) => {
 });
 
 // Payer une dette
-// Payer une dette
 app.put('/api/clients/:clientId/debts/:debtId/pay', async (req, res) => {
   try {
     const client = await Client.findById(req.params.clientId);
@@ -128,50 +123,31 @@ app.put('/api/clients/:clientId/debts/:debtId/pay', async (req, res) => {
   }
 });
 
-
-// Création d'un client
-app.post('/api/clients', async (req, res) => {
-  try {
-    const initialDebt = Number(req.body.initialDebt) || 0;
-    
-    const client = new Client({
-      name: req.body.name,
-      phone: req.body.phone,
-      deposit: req.body.deposit || 0,
-      totalDebt: initialDebt,
-      debts: initialDebt ? [{
-        amount: initialDebt,
-        productName: req.body.initialProductName || 'Produit initial',
-        date: new Date()
-      }] : []
+// Vite Dev Server Setup
+const setupVite = async () => {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa'
     });
-    
-    const newClient = await client.save();
-    res.status(201).json(newClient);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(__dirname, '../dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
-});
+};
 
-
-// Vite Dev Server
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-if (process.env.NODE_ENV !== 'production') {
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa'
+// Start server
+const startServer = async () => {
+  await setupVite();
+  
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
   });
+};
 
-  app.use(vite.middlewares);
-} else {
-  const distPath = join(__dirname, '../dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    res.sendFile(join(distPath, 'index.html'));
-  });
-}
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+startServer();
